@@ -7,7 +7,7 @@ use anyhow::Result;
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use sqlx::{FromRow, Row, SqlitePool};
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::RwLock;
 
 /// Represents a book, taken from the books table in SQLite.
 #[derive(Debug, Serialize, Deserialize, FromRow, Clone)]

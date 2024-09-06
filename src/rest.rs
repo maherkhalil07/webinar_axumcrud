@@ -107,7 +107,7 @@ mod test {
         dotenv::dotenv().ok();
         let connection_pool = crate::init_db().await.unwrap();
         let app = crate::router(connection_pool);
-        TestClient::new(app)
+        TestClient::new(app).await
     }
 
     #[tokio::test]
