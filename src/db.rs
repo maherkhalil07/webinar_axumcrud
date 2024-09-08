@@ -8,6 +8,8 @@ use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use sqlx::{FromRow, Row, postgres::PgPool};
 use tokio::sync::RwLock;
+use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
+use std::env;
 
 /// Represents a book, taken from the books table in SQLite.
 #[derive(Debug, Serialize, Deserialize, FromRow, Clone)]
@@ -49,14 +51,59 @@ impl BookCache {
 
 static CACHE: Lazy<BookCache> = Lazy::new(BookCache::new);
 
+// todo: to seperate the create the database if not exist to seperate file
+/// Check if the database exists and create it if it doesn't
+pub async fn create_db_if_not_exists() -> Result<()> {
+    let host = env::var("POSTGRES_HOST").unwrap_or("127.0.0.1".to_string());
+    let port: u16 = env::var("POSTGRES_PORT").unwrap_or("5432".to_string()).parse().unwrap();
+    let user = env::var("POSTGRES_USER").unwrap_or("postgres".to_string());
+    let password = env::var("POSTGRES_PASSWORD").unwrap_or("postgres".to_string());
+    let db_name = env::var("POSTGRES_DB").unwrap_or("rust_sqlx".to_string());
+
+    // Create connection options for connecting to the Postgres server without a specific database
+    let connect_options = PgConnectOptions::new()
+        .host(&host)
+        .port(port)
+        .username(&user)
+        .password(&password)
+        .database("postgres"); // Connect to the default 'postgres' database
+
+    // Create a connection pool for the general Postgres connection
+    let pool = PgPoolOptions::new()
+        .max_connections(5)
+        .connect_with(connect_options)
+        .await?;
+
+    // Check if the database exists, and if not, create it
+    let db_exists: (bool,) = sqlx::query_as("SELECT EXISTS(SELECT 1 FROM pg_database WHERE datname = $1)")
+        .bind(&db_name)
+        .fetch_one(&pool)
+        .await?;
+
+    if !db_exists.0 {
+        // If the database does not exist, create it
+        sqlx::query(&format!("CREATE DATABASE {}", db_name))
+            .execute(&pool)
+            .await?;
+        println!("Database '{}' created successfully!", db_name);
+    } else {
+        println!("Database '{}' already exists.", db_name);
+    }
+
+    Ok(())
+}
+
 /// Create a database connection pool. Run any migrations.
 ///
 /// ## Returns
 /// * A ready-to-use connection pool.
 pub async fn init_db() -> Result<PgPool> {
-    let database_url = std::env::var("DATABASE_URL")?;
+    let database_url = env::var("DATABASE_URL")?;
     let connection_pool = PgPool::connect(&database_url).await?;
+
+    // Run migrations
     sqlx::migrate!().run(&connection_pool).await?;
+
     Ok(connection_pool)
 }
 
@@ -71,7 +118,7 @@ pub async fn all_books(connection_pool: &PgPool) -> Result<Vec<Book>> {
     if let Some(all_books) = CACHE.all_books().await {
         Ok(all_books)
     } else {
-        let books = sqlx::query_as::<_, Book>("SELECT * FROM books ORDER BY title,author")
+        let books = sqlx::query_as::<_, Book>("SELECT * FROM books ORDER BY id, title,author")
             .fetch_all(connection_pool)
             .await?;
         CACHE.refresh(books.clone()).await;
@@ -173,13 +220,17 @@ mod test {
     #[sqlx::test]
     async fn test_create() {
         dotenv::dotenv().ok();
-        let cnn = init_db().await.unwrap();
-        let new_id = add_book(&cnn, "Test Book", "Test Author").await.unwrap();
-        let new_book = book_by_id(&cnn, new_id).await.unwrap();
+
+        // Only initialize the pool and run migrations
+        let pool = init_db().await.unwrap();
+
+        let new_id = add_book(&pool, "Test Book", "Test Author").await.unwrap();
+        let new_book = book_by_id(&pool, new_id).await.unwrap();
         assert_eq!(new_id, new_book.id);
         assert_eq!("Test Book", new_book.title);
         assert_eq!("Test Author", new_book.author);
     }
+
 
     #[sqlx::test]
     async fn test_update() {

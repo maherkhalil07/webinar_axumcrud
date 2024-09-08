@@ -1,7 +1,7 @@
 mod db;
 mod rest;
 mod view;
-use crate::db::init_db;
+use crate::db::{init_db, create_db_if_not_exists};
 use anyhow::Result;
 use axum::{Extension, Router};
 use sqlx::postgres::PgPool;
@@ -34,6 +34,9 @@ async fn main() -> Result<()> {
     tracing_subscriber::registry()
         .with(tracing_subscriber::fmt::layer())
         .init();
+
+     // Ensure the database exists
+     create_db_if_not_exists().await?;
 
     // Initialize the database and obtain a connection pool
     let connection_pool = init_db().await?;
