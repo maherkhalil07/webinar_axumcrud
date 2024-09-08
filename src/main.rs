@@ -1,4 +1,3 @@
-mod create_db;
 mod db;
 mod rest;
 mod view;
