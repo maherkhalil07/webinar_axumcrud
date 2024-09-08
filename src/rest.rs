@@ -3,7 +3,7 @@ use axum::extract::Path;
 use axum::http::StatusCode;
 use axum::routing::{delete, get, post, put};
 use axum::{extract, Extension, Json, Router};
-use sqlx::SqlitePool;
+use sqlx::postgres::PgPool;
 
 /// Build the books REST service.
 /// Placing it in its own module with a single service export
@@ -25,7 +25,7 @@ pub fn books_service() -> Router {
 /// ## Returns
 /// Either an error 500, or a JSON list of all books in the database.
 async fn get_all_books(
-    Extension(cnn): Extension<SqlitePool>,
+    Extension(cnn): Extension<PgPool>,
 ) -> Result<Json<Vec<Book>>, StatusCode> {
     if let Ok(books) = all_books(&cnn).await {
         Ok(Json(books))
@@ -43,7 +43,7 @@ async fn get_all_books(
 /// ## Returns
 /// Either a 500 status code, or a JSON encoded book.
 async fn get_book(
-    Extension(cnn): Extension<SqlitePool>,
+    Extension(cnn): Extension<PgPool>,
     Path(id): Path<i32>,
 ) -> Result<Json<Book>, StatusCode> {
     if let Ok(book) = book_by_id(&cnn, id).await {
@@ -59,7 +59,7 @@ async fn get_book(
 /// * `Extension(cnn)` - dependency injected by Axum from the database layer.
 /// * A Json-encoded book extracted from the post body.
 async fn add_book(
-    Extension(cnn): Extension<SqlitePool>,
+    Extension(cnn): Extension<PgPool>,
     extract::Json(book): extract::Json<Book>,
 ) -> Result<Json<i32>, StatusCode> {
     if let Ok(new_id) = crate::db::add_book(&cnn, &book.title, &book.author).await {
@@ -75,7 +75,7 @@ async fn add_book(
 /// * `Extension(cnn)` - dependency injected by Axum from the database layer.
 /// * `book` - JSON encoded book to update, from the patch body.
 async fn update_book(
-    Extension(cnn): Extension<SqlitePool>,
+    Extension(cnn): Extension<PgPool>,
     extract::Json(book): extract::Json<Book>,
 ) -> StatusCode {
     if crate::db::update_book(&cnn, &book).await.is_ok() {
@@ -90,7 +90,7 @@ async fn update_book(
 /// ## Arguments
 /// * `Extension(cnn)` - dependency injected by Axum from the database layer.
 /// * `id` of the book to delete, extracted from the URL of the delete call.
-async fn delete_book(Extension(cnn): Extension<SqlitePool>, Path(id): Path<i32>) -> StatusCode {
+async fn delete_book(Extension(cnn): Extension<PgPool>, Path(id): Path<i32>) -> StatusCode {
     if crate::db::delete_book(&cnn, id).await.is_ok() {
         StatusCode::OK
     } else {

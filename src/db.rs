@@ -6,7 +6,7 @@
 use anyhow::Result;
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
-use sqlx::{FromRow, Row, SqlitePool};
+use sqlx::{FromRow, Row, postgres::PgPool};
 use tokio::sync::RwLock;
 
 /// Represents a book, taken from the books table in SQLite.
@@ -53,9 +53,9 @@ static CACHE: Lazy<BookCache> = Lazy::new(BookCache::new);
 ///
 /// ## Returns
 /// * A ready-to-use connection pool.
-pub async fn init_db() -> Result<SqlitePool> {
+pub async fn init_db() -> Result<PgPool> {
     let database_url = std::env::var("DATABASE_URL")?;
-    let connection_pool = SqlitePool::connect(&database_url).await?;
+    let connection_pool = PgPool::connect(&database_url).await?;
     sqlx::migrate!().run(&connection_pool).await?;
     Ok(connection_pool)
 }
@@ -67,7 +67,7 @@ pub async fn init_db() -> Result<SqlitePool> {
 ///
 /// ## Returns
 /// * A vector of books, or an error.
-pub async fn all_books(connection_pool: &SqlitePool) -> Result<Vec<Book>> {
+pub async fn all_books(connection_pool: &PgPool) -> Result<Vec<Book>> {
     if let Some(all_books) = CACHE.all_books().await {
         Ok(all_books)
     } else {
@@ -84,7 +84,7 @@ pub async fn all_books(connection_pool: &SqlitePool) -> Result<Vec<Book>> {
 /// ## Arguments
 /// * `connection_pool` - the database connection pool to use
 /// * `id` - the primary key of the book to retrieve
-pub async fn book_by_id(connection_pool: &SqlitePool, id: i32) -> Result<Book> {
+pub async fn book_by_id(connection_pool: &PgPool, id: i32) -> Result<Book> {
     Ok(sqlx::query_as::<_, Book>("SELECT * FROM books WHERE id=$1")
         .bind(id)
         .fetch_one(connection_pool)
@@ -101,7 +101,7 @@ pub async fn book_by_id(connection_pool: &SqlitePool, id: i32) -> Result<Book> {
 /// ## Returns
 /// * The primary key value of the new book
 pub async fn add_book<S: ToString>(
-    connection_pool: &SqlitePool,
+    connection_pool: &PgPool,
     title: S,
     author: S,
 ) -> Result<i32> {
@@ -123,7 +123,7 @@ pub async fn add_book<S: ToString>(
 /// * `connection_pool` - the database connection to use
 /// * `book` - the book object to update. The primary key will be used to
 ///            determine which row is updated.
-pub async fn update_book(connection_pool: &SqlitePool, book: &Book) -> Result<()> {
+pub async fn update_book(connection_pool: &PgPool, book: &Book) -> Result<()> {
     sqlx::query("UPDATE books SET title=$1, author=$2 WHERE id=$3")
         .bind(&book.title)
         .bind(&book.author)
@@ -139,7 +139,7 @@ pub async fn update_book(connection_pool: &SqlitePool, book: &Book) -> Result<()
 /// ## Arguments
 /// * `connection_pool` - the database connection to use
 /// * `id` - the primary key of the book to delete
-pub async fn delete_book(connection_pool: &SqlitePool, id: i32) -> Result<()> {
+pub async fn delete_book(connection_pool: &PgPool, id: i32) -> Result<()> {
     sqlx::query("DELETE FROM books WHERE id=$1")
         .bind(id)
         .execute(connection_pool)
